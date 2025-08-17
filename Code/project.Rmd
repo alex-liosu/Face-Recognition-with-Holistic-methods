@@ -1,0 +1,263 @@
+---
+title: "midterm project"
+author: "Chenze-Li"
+date: "2024-03-10"
+output: pdf_document
+---
+
+### Imput the data set
+
+
+
+```{r}
+train = read.table("traindata.txt")
+test = read.table("testdata.txt")
+train = as.matrix(train)
+test = as.matrix(test)
+
+```
+
+
+### Feature Extraction
+
+```{r}
+n1 = 40
+n2 = 5
+s1 = 28
+s2 = 23
+# k = 10
+U = svd(train)$u
+# PCA
+
+PCA<-function(s){
+  
+  
+  U1_P = U[,1:s]
+  return (U1_P)
+
+}
+
+
+# FDA
+
+library(geigen)
+library(far)
+library(nlme)
+
+d = n1*n2/2
+U_d = U[,1:d]
+Y_train = t(U_d)%*%train
+Y_mean = as.matrix(apply(Y_train,1,mean))
+Sb = 0
+Sw = 0
+
+for (i in 1:n1){
+  Y_se = as.matrix(Y_train[,((i-1)*n2+1):(i*n2)])
+  Y_bet = as.matrix(apply(Y_se,1,mean))
+  Sb = Sb + (Y_bet - Y_mean)%*%t(Y_bet - Y_mean)
+  for (j in 1:n2){
+    Sw = as.matrix(Sw + (Y_se[,j]-Y_bet)%*%t(Y_se[,j]-Y_bet))
+  }
+  
+}
+
+Sb =  as.matrix(Sb)
+Sw = as.matrix(Sw)
+result = geigen(Sb,Sw)
+
+FDA<- function(s){
+  V = result$vectors[,(d-s+1):d]
+  V = orthonormalization(V,basis = FALSE, norm = TRUE)
+  U1_F = U_d%*%V
+  
+  return (U1_F)
+}
+
+
+
+```
+
+
+
+```{r}
+# Simple Projection
+SIP<-function(s){
+  I = diag(1,nrow = s1*s2, ncol = s1*s2)
+  U1_S = I[,1:s]
+  return (U1_S)
+}
+
+```
+
+
+
+
+```{r}
+match<-function(X,Y){
+  n = dim(Y)[2]
+  dis = c()
+  for (i in 1:n){
+    dis = c(dis,norm(X - Y[,i],type = "2"))
+  }
+  ind = which(dis == min(dis))
+  return (unique(ceiling(ind/n2)))
+}
+classification<-function(U1,I){
+  k = 0
+  pre = 0
+  Y = t(U1)%*%train
+  I1 = t(U1)%*%I
+  n = dim(I1)[2]
+  for (i in 1:n){
+    I_i = I1[,i]
+    pre = match(I_i,Y)
+    if (ceiling(i/n2) %in% pre){
+      k = k+1
+    }
+  }
+  return (k/n)
+}
+
+```
+
+
+```{r}
+pca = c()
+fda = c()
+sip = c()
+k_n = 40
+
+for (k in 1:k_n){
+  pca = c(pca, classification(PCA(k),test))
+  fda = c(fda, classification(FDA(k),test))
+  sip = c(sip, classification(SIP(k),test))
+}
+
+```
+
+
+```{r}
+plot(1:k_n,pca,type = "o",pch = 20,xlab = "dimension",ylab = "Correct Classification Rate",main = "d = n1*n2/2", ylim = c(0,0.95),col = "blue")
+lines(1:k_n, fda, type = "o", pch = 20,col = "red")
+lines(1:k_n, sip, type = "o", pch = 20,col = "green")
+legend("bottomright",pch = c(20,20),legend = c("PCA","FDA","Simple Projection"),col = c("blue","red","green"),bty = "n")
+
+```
+
+
+```{r}
+newmatch<-function(X,Y){
+  n = dim(Y)[2]
+  dis = c()
+  for (i in 1:n){
+    dis = c(dis,norm(X - Y[,i],type = "2"))
+  }
+  ind = which(dis == min(dis))
+  return (ind)
+}
+toys<-function(U1, I){
+  Y = t(U1)%*%train
+  I1 = t(U1)%*%I
+  
+  pre = newmatch(I1,Y)
+  
+  return (pre)
+}
+```
+
+```{r}
+ex_k = c(1,9,10,20,30,40)
+ex_i = c(15, 30, 40)
+ex_j = c(1,3,5)
+im_se = (ex_i - 1)*5+ex_j
+```
+
+
+
+```{r,fig.width=3,fig.height=4}
+for (i in im_se){
+  s = test[,i]
+  m = matrix(s, nrow = s1, ncol = s2)
+  m = apply(m, 2, rev)
+  image(t(m),axes = FALSE,col = grey(seq(0, 1, length = 256)))
+}
+
+```
+
+
+```{r,fig.width=8,fig.height=1.8}
+### PCA
+par(mar=c(1,1,1,1),oma=c(1,1,1,1))
+for (i in im_se){
+  layout(matrix(c(1,0,2,3,4,5,6,7), ncol=8),widths = c(2, 0.5, 2,2,2,2,2,2))
+  s = test[,i]
+  m = matrix(s, nrow = s1, ncol = s2)
+  m = apply(m, 2, rev)
+  image(t(m),axes = FALSE,col = grey(seq(0, 1, length = 256)))
+  title(main = as.character(ceiling(i/n2)))
+  for (j in ex_k){
+    p = toys(PCA(j),s)
+    imag_ = train[,p]
+    m = matrix(imag_, nrow = s1, ncol = s2)
+    m = apply(m, 2, rev)
+    image(t(m),axes = FALSE,col = grey(seq(0, 1, length = 256)))
+    title(main = paste0(as.character(ceiling(p[1]/n2)),paste0(", k = ",as.character(j))))
+  }
+  layout(matrix(1))
+}
+  
+
+```
+
+
+
+```{r,fig.width=8,fig.height=1.8}
+### FDA
+par(mar=c(1,1,1,1),oma=c(1,1,1,1))
+for (i in im_se){
+  layout(matrix(c(1,0,2,3,4,5,6,7), ncol=8),widths = c(2, 0.5, 2,2,2,2,2,2))
+  s = test[,i]
+  m = matrix(s, nrow = s1, ncol = s2)
+  m = apply(m, 2, rev)
+  image(t(m),axes = FALSE,col = grey(seq(0, 1, length = 256)))
+  title(main = as.character(ceiling(i/n2)))
+  for (j in ex_k){
+    p = toys(FDA(j),s)
+    imag_ = train[,p]
+    m = matrix(imag_, nrow = s1, ncol = s2)
+    m = apply(m, 2, rev)
+    image(t(m),axes = FALSE,col = grey(seq(0, 1, length = 256)))
+    title(main = paste0(as.character(ceiling(p[1]/n2)),paste0(", k = ",as.character(j))))
+  }
+  layout(matrix(1))
+}
+  
+
+```
+
+
+
+```{r,fig.width=8,fig.height=1.8}
+### Simple Projection
+par(mar=c(1,1,1,1),oma=c(1,1,1,1))
+for (i in im_se){
+  layout(matrix(c(1,0,2,3,4,5,6,7), ncol=8),widths = c(2, 0.5, 2,2,2,2,2,2))
+  s = test[,i]
+  m = matrix(s, nrow = s1, ncol = s2)
+  m = apply(m, 2, rev)
+  image(t(m),axes = FALSE,col = grey(seq(0, 1, length = 256)))
+  title(main = as.character(ceiling(i/n2)))
+  for (j in ex_k){
+    p = toys(SIP(j),s)
+    imag_ = train[,p[1]]
+    m = matrix(imag_, nrow = s1, ncol = s2)
+    m = apply(m, 2, rev)
+    image(t(m),axes = FALSE,col = grey(seq(0, 1, length = 256)))
+    title(main = paste0(as.character(ceiling(p[1]/n2)),paste0(", k = ",as.character(j))))
+
+  }
+  layout(matrix(1))
+}
+  
+
+```
